@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource Allocation Graph Simulator</title>
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background-color: #f0f4f8;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    #network {
+      height: 500px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      background-color: #fff;
+    }
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    input, select, button {
+      margin: 0.3rem;
+      padding: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    .status {
+      margin-top: 1rem;
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Resource Allocation Graph Simulator</h1>
+
+  <div class="controls">
+    <div>
+      <input type="text" id="process" placeholder="Process (e.g., P1)" />
+      <input type="text" id="resource" placeholder="Resource (e.g., R1)" />
+      <select id="type">
+        <option value="request">Request</option>
+        <option value="allocate">Allocate</option>
+      </select>
+      <button onclick="addEdge()">Add Edge</button>
+      <button onclick="checkDeadlock()">Check Deadlock</button>
+      <button onclick="exportState()">Export State</button>
+      <input type="file" onchange="importState(event)" />
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div id="network"></div>
+
+  <script>
+    const nodes = new vis.DataSet();
+    const edges = new vis.DataSet();
+
+    const container = document.getElementById('network');
+    const data = { nodes: nodes, edges: edges };
+    const options = {
+      nodes: {
+        shape: 'circle',
+        size: 25,
+        font: { size: 18, color: '#000' },
+        borderWidth: 2
+      },
+      edges: {
+        arrows: 'to',
+        color: {
+          color: '#ccc',
+          highlight: '#848484',
+          hover: '#848484'
+        },
+        smooth: {
+          type: 'dynamic'
+        }
+      },
+      physics: true,
+      interaction: { dragNodes: true }
+    };
+    const network = new vis.Network(container, data, options);
+
+    const nodeIds = new Set();
+    const rawEdges = [];
+
+    function addEdge() {
+      const process = document.getElementById("process").value.trim();
+      const resource = document.getElementById("resource").value.trim();
+      const type = document.getElementById("type").value;
+      if (!process || !resource) return alert("Both fields are required.");
+
+      const from = type === "request" ? process : resource;
+      const to = type === "request" ? resource : process;
+
+      if (!nodeIds.has(process)) {
+        nodes.add({ id: process, label: process, color: '#a2d2ff' });
+        nodeIds.add(process);
+      }
+      if (!nodeIds.has(resource)) {
+        nodes.add({ id: resource, label: resource, color: '#ffd6a5' });
+        nodeIds.add(resource);
+      }
+
+      edges.add({ from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' });
+      rawEdges.push([from, to]);
+
+      document.getElementById("status").innerText = `Added ${type} edge: ${from} → ${to}`;
+    }
+
+    function checkDeadlock() {
+      const adj = {};
+      nodeIds.forEach(n => adj[n] = []);
+      rawEdges.forEach(([from, to]) => adj[from].push(to));
+
+      const visited = new Set();
+      const recStack = new Set();
+
+      function dfs(node) {
+        if (!visited.has(node)) {
+          visited.add(node);
+          recStack.add(node);
+
+          for (const neighbor of adj[node]) {
+            if (!visited.has(neighbor) && dfs(neighbor)) return true;
+            else if (recStack.has(neighbor)) return true;
+          }
+        }
+        recStack.delete(node);
+        return false;
+      }
+
+      for (const node of nodeIds) {
+        if (dfs(node)) {
+          document.getElementById("status").innerText = "🔴 Deadlock detected!";
+          return;
+        }
+      }
+
+      document.getElementById("status").innerText = "✅ No deadlock detected.";
+    }
+
+    function exportState() {
+      const state = {
+        nodes: nodes.get(),
+        edges: rawEdges
+      };
+      const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'graph-state.json';
+      a.click();
+    }
+
+    function importState(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = JSON.parse(e.target.result);
+        nodes.clear();
+        edges.clear();
+        rawEdges.length = 0;
+        nodeIds.clear();
+
+        content.nodes.forEach(n => {
+          nodes.add(n);
+          nodeIds.add(n.id);
+        });
+        content.edges.forEach(([from, to]) => {
+          rawEdges.push([from, to]);
+          edges.add({ from, to, color: from.startsWith('P') ? '#ff6b6b' : '#06d6a0' });
+        });
+        document.getElementById("status").innerText = "✅ Graph state imported.";
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</body>
+</html>
