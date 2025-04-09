@@ -7,37 +7,60 @@
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
       padding: 2rem;
-      background-color: #f0f4f8;
+      background: linear-gradient(to right, #e0f7fa, #f8f9fa);
     }
     h1 {
       text-align: center;
+      color: #333;
       margin-bottom: 1rem;
     }
     #network {
       height: 500px;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      background-color: #fff;
+      border: 2px solid #ccc;
+      border-radius: 12px;
+      background-color: #ffffff;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
     .controls {
       display: flex;
       flex-direction: column;
       align-items: center;
       margin-top: 1rem;
+      gap: 0.5rem;
     }
-    input, select, button {
-      margin: 0.3rem;
-      padding: 0.5rem;
-      border-radius: 5px;
+    .form-group {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    input, select, button, label {
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
       border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+    input[type="file"] {
+      border: none;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #0056b3;
     }
     .status {
       margin-top: 1rem;
       text-align: center;
       font-weight: bold;
+      font-size: 1.1rem;
+      color: #333;
     }
   </style>
 </head>
@@ -45,17 +68,22 @@
   <h1>Resource Allocation Graph Simulator</h1>
 
   <div class="controls">
-    <div>
+    <div class="form-group">
       <input type="text" id="process" placeholder="Process (e.g., P1)" />
       <input type="text" id="resource" placeholder="Resource (e.g., R1)" />
       <select id="type">
-        <option value="request">Request</option>
-        <option value="allocate">Allocate</option>
+        <option value="request">Request (P → R)</option>
+        <option value="allocate">Allocate (R → P)</option>
       </select>
       <button onclick="addEdge()">Add Edge</button>
       <button onclick="checkDeadlock()">Check Deadlock</button>
-      <button onclick="exportState()">Export State</button>
-      <input type="file" onchange="importState(event)" />
+    </div>
+    <div class="form-group">
+      <button onclick="exportState()">⬇️ Export Graph</button>
+      <label for="importFile" style="background-color:#28a745; color:white; cursor:pointer;">
+        📁 Import Graph
+      </label>
+      <input type="file" id="importFile" onchange="importState(event)" style="display:none;" />
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -65,7 +93,6 @@
   <script>
     const nodes = new vis.DataSet();
     const edges = new vis.DataSet();
-
     const container = document.getElementById('network');
     const data = { nodes: nodes, edges: edges };
     const options = {
@@ -115,7 +142,7 @@
       edges.add({ from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' });
       rawEdges.push([from, to]);
 
-      document.getElementById("status").innerText = `Added ${type} edge: ${from} → ${to}`;
+      document.getElementById("status").innerText = `✅ ${type.charAt(0).toUpperCase() + type.slice(1)} edge added: ${from} → ${to}`;
     }
 
     function checkDeadlock() {
@@ -165,28 +192,36 @@
 
     function importState(event) {
       const file = event.target.files[0];
-      if (!file) return;
+      if (!file || !file.name.endsWith('.json')) {
+        alert("Please upload a valid JSON file.");
+        return;
+      }
 
       const reader = new FileReader();
       reader.onload = function(e) {
-        const content = JSON.parse(e.target.result);
-        nodes.clear();
-        edges.clear();
-        rawEdges.length = 0;
-        nodeIds.clear();
+        try {
+          const content = JSON.parse(e.target.result);
+          nodes.clear();
+          edges.clear();
+          rawEdges.length = 0;
+          nodeIds.clear();
 
-        content.nodes.forEach(n => {
-          nodes.add(n);
-          nodeIds.add(n.id);
-        });
-        content.edges.forEach(([from, to]) => {
-          rawEdges.push([from, to]);
-          edges.add({ from, to, color: from.startsWith('P') ? '#ff6b6b' : '#06d6a0' });
-        });
-        document.getElementById("status").innerText = "✅ Graph state imported.";
+          content.nodes.forEach(n => {
+            nodes.add(n);
+            nodeIds.add(n.id);
+          });
+          content.edges.forEach(([from, to]) => {
+            rawEdges.push([from, to]);
+            edges.add({ from, to, color: from.startsWith('P') ? '#ff6b6b' : '#06d6a0' });
+          });
+          document.getElementById("status").innerText = "✅ Graph state imported successfully.";
+        } catch {
+          alert("Failed to parse JSON file.");
+        }
       };
       reader.readAsText(file);
     }
   </script>
 </body>
 </html>
+
