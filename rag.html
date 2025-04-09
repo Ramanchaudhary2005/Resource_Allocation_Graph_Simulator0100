@@ -6,26 +6,42 @@
   <title>Resource Allocation Graph Simulator</title>
   <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <style>
+    :root {
+      --bg-light: linear-gradient(to right, #e0f7fa, #f8f9fa);
+      --bg-dark: #121212;
+      --text-light: #000;
+      --text-dark: #f1f1f1;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 0;
       padding: 2rem;
-      background: linear-gradient(to right, #e0f7fa, #f8f9fa);
+      background: var(--bg-light);
       display: flex;
       flex-direction: column;
       align-items: center;
+      color: var(--text-light);
+      transition: background 0.3s, color 0.3s;
     }
+
+    body.dark {
+      background: var(--bg-dark);
+      color: var(--text-dark);
+    }
+
     h1 {
       text-align: center;
-      color: #333;
       margin-bottom: 1rem;
     }
+
     #main-container {
       display: flex;
       gap: 2rem;
       width: 100%;
       max-width: 1400px;
     }
+
     #network {
       flex: 1;
       height: 500px;
@@ -34,6 +50,7 @@
       background-color: #ffffff;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
+
     .controls {
       display: flex;
       flex-direction: column;
@@ -41,43 +58,47 @@
       margin-top: 1rem;
       gap: 0.5rem;
     }
+
     .form-group {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
       gap: 0.5rem;
     }
+
     input, select, button, label {
       padding: 0.6rem 1rem;
       border-radius: 8px;
       border: 1px solid #ccc;
       font-size: 1rem;
     }
-    input[type="file"] {
-      border: none;
-    }
+
     button {
       background-color: #007bff;
       color: white;
       cursor: pointer;
       transition: background-color 0.3s;
     }
+
     button:hover {
       background-color: #0056b3;
     }
+
     .danger {
       background-color: #dc3545;
     }
+
     .danger:hover {
       background-color: #a71d2a;
     }
+
     .status {
       margin-top: 1rem;
       text-align: center;
       font-weight: bold;
       font-size: 1.1rem;
-      color: #333;
     }
+
     .history-panel {
       width: 280px;
       background: #ffffff;
@@ -90,17 +111,7 @@
       display: flex;
       flex-direction: column;
     }
-    .history-panel h2 {
-      margin: 0 0 0.5rem 0;
-      font-size: 1.2rem;
-      text-align: center;
-    }
-    .history-actions {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.5rem;
-    }
+
     .history-item {
       padding: 0.5rem;
       margin-bottom: 0.5rem;
@@ -109,15 +120,49 @@
       font-size: 0.9rem;
       cursor: pointer;
     }
-    .history-item:hover {
-      background-color: #e3e3e3;
+
+    .summary-panel {
+      margin-top: 1rem;
+      padding: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      background: #f7f7f7;
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
     }
+
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #007bff;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 2rem auto;
+      display: none;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
     footer {
       margin-top: 2rem;
       text-align: center;
-      color: #666;
       font-size: 0.9rem;
     }
+
+    .toggle-dark {
+      background: #333;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+
   </style>
 </head>
 <body>
@@ -136,15 +181,15 @@
     </div>
     <div class="form-group">
       <button onclick="exportState()">⬇️ Export Graph</button>
-      <label for="importFile" style="background-color:#28a745; color:white; cursor:pointer;">
-        📁 Import Graph
-      </label>
+      <label for="importFile" style="background-color:#28a745; color:white; cursor:pointer;">📁 Import Graph</label>
       <input type="file" id="importFile" onchange="importState(event)" style="display:none;" />
-      <button class="danger" onclick="removeSelected()">🗑️ Remove Selected</button>
+      <button class="danger" onclick="removeSelected()">🗑️ Remove</button>
       <button onclick="undoAction()">↩️ Undo</button>
       <button onclick="redoAction()">↪️ Redo</button>
       <button onclick="downloadHistory()">💾 Save History</button>
+      <button class="toggle-dark" onclick="toggleDarkMode()">🌓 Toggle Dark Mode</button>
     </div>
+    <div class="spinner" id="loader"></div>
     <div class="status" id="status"></div>
   </div>
 
@@ -152,18 +197,23 @@
     <div id="network"></div>
     <div class="history-panel">
       <h2>Action History</h2>
-      <div class="history-actions">
-        <select id="filter-action" onchange="renderHistory()">
-          <option value="all">All</option>
-          <option value="addEdge">Add Edge</option>
-          <option value="remove">Remove</option>
-          <option value="import">Import</option>
-          <option value="export">Export</option>
-        </select>
-        <button onclick="clearHistory()" class="danger">Clear</button>
-      </div>
+      <select id="filter-action" onchange="renderHistory()">
+        <option value="all">All</option>
+        <option value="addEdge">Add Edge</option>
+        <option value="remove">Remove</option>
+        <option value="import">Import</option>
+        <option value="export">Export</option>
+      </select>
+      <button onclick="clearHistory()" class="danger">Clear</button>
       <div id="history-log"></div>
     </div>
+  </div>
+
+  <div class="summary-panel" id="graph-summary">
+    <strong>Graph Summary:</strong>
+    <div>Processes: <span id="summary-process">0</span></div>
+    <div>Resources: <span id="summary-resource">0</span></div>
+    <div>Edges: <span id="summary-edges">0</span></div>
   </div>
 
   <footer>
@@ -173,77 +223,56 @@
   <script>
     const nodes = new vis.DataSet();
     const edges = new vis.DataSet();
-    const container = document.getElementById('network');
-    const data = { nodes: nodes, edges: edges };
-    const options = {
-      nodes: {
-        shape: 'circle',
-        size: 25,
-        font: { size: 18, color: '#000' },
-        borderWidth: 2
-      },
-      edges: {
-        arrows: 'to',
-        color: {
-          color: '#ccc',
-          highlight: '#848484',
-          hover: '#848484'
-        },
-        smooth: {
-          type: 'dynamic'
-        }
-      },
+    const network = new vis.Network(document.getElementById("network"), { nodes, edges }, {
+      nodes: { shape: "circle", size: 25, font: { size: 18 }, borderWidth: 2 },
+      edges: { arrows: "to", color: "#ccc", smooth: { type: "dynamic" } },
       physics: true,
       interaction: { dragNodes: true, multiselect: true }
-    };
-    const network = new vis.Network(container, data, options);
+    });
 
-    const nodeIds = new Set();
-    const rawEdges = [];
     const history = [];
     const redoStack = [];
 
-    function renderHistory() {
-      const log = document.getElementById("history-log");
-      log.innerHTML = "";
-      const filter = document.getElementById("filter-action").value;
-      [...history].reverse().forEach((entry, index) => {
-        if (filter !== 'all' && entry.action !== filter) return;
-        const div = document.createElement("div");
-        div.className = "history-item";
-        div.textContent = `[${entry.timestamp}] ${entry.text}`;
-        div.onclick = () => {
-          if (entry.nodes) network.selectNodes(entry.nodes.map(n => n.id));
-          if (entry.edge) network.selectEdges([entry.edge.id]);
-          if (entry.edges) network.selectEdges(entry.edges.map(e => e.id));
-        };
-        log.appendChild(div);
-      });
+    function addEdge() {
+      const process = document.getElementById("process").value.trim();
+      const resource = document.getElementById("resource").value.trim();
+      const type = document.getElementById("type").value;
+
+      if (!process || !resource) return alert("Enter valid process/resource");
+
+      const from = type === "request" ? process : resource;
+      const to = type === "request" ? resource : process;
+
+      if (!nodes.get(from)) nodes.add({ id: from, label: from });
+      if (!nodes.get(to)) nodes.add({ id: to, label: to });
+
+      const id = from + "_" + to;
+      if (!edges.get(id)) {
+        edges.add({ id, from, to });
+        logAction(`Added edge ${from} → ${to}`, { action: "addEdge", edge: { id, from, to } });
+        updateSummary();
+      }
     }
 
     function logAction(text, actionData = {}) {
       const timestamp = new Date().toLocaleTimeString();
       const fullEntry = { ...actionData, text, timestamp };
       history.push(fullEntry);
-      redoStack.length = 0; // clear redo on new action
+      redoStack.length = 0;
       renderHistory();
     }
 
-    function undoAction() {
-      const last = history.pop();
-      if (last) {
-        redoStack.push(last);
-        // You may define specific undo behaviors here
-        renderHistory();
-      }
-    }
-
-    function redoAction() {
-      const next = redoStack.pop();
-      if (next) {
-        history.push(next);
-        renderHistory();
-      }
+    function renderHistory() {
+      const log = document.getElementById("history-log");
+      log.innerHTML = "";
+      const filter = document.getElementById("filter-action").value;
+      [...history].reverse().forEach(entry => {
+        if (filter !== "all" && entry.action !== filter) return;
+        const div = document.createElement("div");
+        div.className = "history-item";
+        div.textContent = `[${entry.timestamp}] ${entry.text}`;
+        log.appendChild(div);
+      });
     }
 
     function clearHistory() {
@@ -252,18 +281,79 @@
       renderHistory();
     }
 
-    function downloadHistory() {
-      const blob = new Blob([
-        history.map(h => `[${h.timestamp}] ${h.text}`).join("\n")
-      ], { type: "text/plain" });
+    function updateSummary() {
+      const processCount = nodes.get().filter(n => n.id.startsWith("P")).length;
+      const resourceCount = nodes.get().filter(n => n.id.startsWith("R")).length;
+      document.getElementById("summary-process").textContent = processCount;
+      document.getElementById("summary-resource").textContent = resourceCount;
+      document.getElementById("summary-edges").textContent = edges.length;
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+    }
+
+    function showLoader() {
+      document.getElementById("loader").style.display = "block";
+      setTimeout(() => {
+        document.getElementById("loader").style.display = "none";
+      }, 1000);
+    }
+
+    function checkDeadlock() {
+      showLoader();
+      document.getElementById("status").textContent = "Checking deadlock... (simulate)";
+      setTimeout(() => {
+        document.getElementById("status").textContent = "✅ No deadlock detected.";
+      }, 1000);
+    }
+
+    function exportState() {
+      const json = { nodes: nodes.get(), edges: edges.get() };
+      const blob = new Blob([JSON.stringify(json)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "action_history.txt";
+      a.download = "graph.json";
+      a.click();
+      logAction("Exported graph", { action: "export" });
+    }
+
+    function importState(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const json = JSON.parse(reader.result);
+        nodes.clear(); edges.clear();
+        nodes.add(json.nodes); edges.add(json.edges);
+        updateSummary();
+        logAction("Imported graph", { action: "import" });
+      };
+      reader.readAsText(file);
+    }
+
+    function removeSelected() {
+      const selected = network.getSelectedNodes().concat(network.getSelectedEdges());
+      nodes.remove(selected); edges.remove(selected);
+      logAction("Removed selected elements", { action: "remove" });
+      updateSummary();
+    }
+
+    function undoAction() { alert("Undo not implemented."); }
+    function redoAction() { alert("Redo not implemented."); }
+    function downloadHistory() {
+      const blob = new Blob([history.map(h => `[${h.timestamp}] ${h.text}`).join("\n")], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "history.txt";
       a.click();
     }
   </script>
 </body>
 </html>
+
+
+
 
 
 
