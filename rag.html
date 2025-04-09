@@ -112,6 +112,12 @@
     .history-item:hover {
       background-color: #e3e3e3;
     }
+    footer {
+      margin-top: 2rem;
+      text-align: center;
+      color: #666;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -136,6 +142,8 @@
       <input type="file" id="importFile" onchange="importState(event)" style="display:none;" />
       <button class="danger" onclick="removeSelected()">🗑️ Remove Selected</button>
       <button onclick="undoAction()">↩️ Undo</button>
+      <button onclick="redoAction()">↪️ Redo</button>
+      <button onclick="downloadHistory()">💾 Save History</button>
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -157,6 +165,10 @@
       <div id="history-log"></div>
     </div>
   </div>
+
+  <footer>
+    Made by Raman Kumar, Bhavishya Verma, and Yogesh
+  </footer>
 
   <script>
     const nodes = new vis.DataSet();
@@ -189,6 +201,7 @@
     const nodeIds = new Set();
     const rawEdges = [];
     const history = [];
+    const redoStack = [];
 
     function renderHistory() {
       const log = document.getElementById("history-log");
@@ -198,7 +211,7 @@
         if (filter !== 'all' && entry.action !== filter) return;
         const div = document.createElement("div");
         div.className = "history-item";
-        div.textContent = entry.text;
+        div.textContent = `[${entry.timestamp}] ${entry.text}`;
         div.onclick = () => {
           if (entry.nodes) network.selectNodes(entry.nodes.map(n => n.id));
           if (entry.edge) network.selectEdges([entry.edge.id]);
@@ -209,17 +222,49 @@
     }
 
     function logAction(text, actionData = {}) {
-      history.push({ ...actionData, text });
+      const timestamp = new Date().toLocaleTimeString();
+      const fullEntry = { ...actionData, text, timestamp };
+      history.push(fullEntry);
+      redoStack.length = 0; // clear redo on new action
       renderHistory();
+    }
+
+    function undoAction() {
+      const last = history.pop();
+      if (last) {
+        redoStack.push(last);
+        // You may define specific undo behaviors here
+        renderHistory();
+      }
+    }
+
+    function redoAction() {
+      const next = redoStack.pop();
+      if (next) {
+        history.push(next);
+        renderHistory();
+      }
     }
 
     function clearHistory() {
       history.length = 0;
+      redoStack.length = 0;
       renderHistory();
+    }
+
+    function downloadHistory() {
+      const blob = new Blob([
+        history.map(h => `[${h.timestamp}] ${h.text}`).join("\n")
+      ], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "action_history.txt";
+      a.click();
     }
   </script>
 </body>
 </html>
+
 
 
 
