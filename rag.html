@@ -162,7 +162,6 @@
       cursor: pointer;
       margin-top: 1rem;
     }
-
   </style>
 </head>
 <body>
@@ -187,7 +186,7 @@
       <button onclick="undoAction()">↩️ Undo</button>
       <button onclick="redoAction()">↪️ Redo</button>
       <button onclick="downloadHistory()">💾 Save History</button>
-      <button class="toggle-dark" onclick="toggleDarkMode()">🌓 Toggle Dark Mode</button>
+      <button class="toggle-dark" onclick="toggleDarkMode()">🌑 Toggle Dark Mode</button>
     </div>
     <div class="spinner" id="loader"></div>
     <div class="status" id="status"></div>
@@ -234,97 +233,116 @@
     const redoStack = [];
 
     function addEdge() {
-  const process = document.getElementById("process").value.trim();
-  const resource = document.getElementById("resource").value.trim();
-  const type = document.getElementById("type").value;
+      const process = document.getElementById("process").value.trim();
+      const resource = document.getElementById("resource").value.trim();
+      const type = document.getElementById("type").value;
 
-  if (!process || !resource) return alert("Enter valid process/resource");
+      if (!process || !resource) return alert("Enter valid process/resource");
 
-  const from = type === "request" ? process : resource;
-  const to = type === "request" ? resource : process;
+      const from = type === "request" ? process : resource;
+      const to = type === "request" ? resource : process;
+      const edgeId = from + "_" + to;
 
-  if (!nodes.get(from)) {
-    nodes.add({
-      id: from,
-      label: from,
-      shape: from.startsWith("P") ? "circle" : "box"  // Shape by ID prefix
-    });
-  }
+      if (edges.get(edgeId)) return alert("Edge already exists between these nodes.");
 
-  if (!nodes.get(to)) {
-    nodes.add({
-      id: to,
-      label: to,
-      shape: to.startsWith("P") ? "circle" : "box"
-    });
-  }
+      if (!nodes.get(from)) {
+        nodes.add({ id: from, label: from, shape: from.startsWith("P") ? "circle" : "box" });
+      }
+      if (!nodes.get(to)) {
+        nodes.add({ id: to, label: to, shape: to.startsWith("P") ? "circle" : "box" });
+      }
 
-  const id = from + "_" + to;
-  if (!edges.get(id)) {
-    edges.add({ id, from, to });
-    logAction(`Added edge ${from} → ${to}`, { action: "addEdge", edge: { id, from, to } });
-    updateSummary();
-  }
-}
+      const edge = { id: edgeId, from, to };
+      edges.add(edge);
+      logAction(`Added edge ${from} → ${to}`, { action: "addEdge", edge });
+      updateSummary();
+    }
 
-
-    function logAction(text, actionData = {}) {
-      const timestamp = new Date().toLocaleTimeString();
-      const fullEntry = { ...actionData, text, timestamp };
-      history.push(fullEntry);
+    function logAction(text, data = {}) {
+      const entry = { ...data, text, timestamp: new Date().toLocaleTimeString() };
+      history.push(entry);
       redoStack.length = 0;
       renderHistory();
     }
 
+    function undoAction() {
+      const last = history.pop();
+      if (!last) return;
+      redoStack.push(last);
+      if (last.action === "addEdge") edges.remove(last.edge.id);
+      else if (last.action === "remove") {
+        nodes.add(last.nodes);
+        edges.add(last.edges);
+      }
+      renderHistory();
+      updateSummary();
+    }
+
+    function redoAction() {
+      const last = redoStack.pop();
+      if (!last) return;
+      history.push(last);
+      if (last.action === "addEdge") edges.add(last.edge);
+      else if (last.action === "remove") {
+        nodes.remove(last.nodes.map(n => n.id));
+        edges.remove(last.edges.map(e => e.id));
+      }
+      renderHistory();
+      updateSummary();
+    }
+
+    function removeSelected() {
+      const selectedNodes = network.getSelectedNodes().map(id => nodes.get(id));
+      const selectedEdges = network.getSelectedEdges().map(id => edges.get(id));
+      nodes.remove(selectedNodes.map(n => n.id));
+      edges.remove(selectedEdges.map(e => e.id));
+      logAction("Removed selected elements", { action: "remove", nodes: selectedNodes, edges: selectedEdges });
+      updateSummary();
+    }
+
     function renderHistory() {
-      const log = document.getElementById("history-log");
-      log.innerHTML = "";
       const filter = document.getElementById("filter-action").value;
+      const container = document.getElementById("history-log");
+      container.innerHTML = "";
       [...history].reverse().forEach(entry => {
         if (filter !== "all" && entry.action !== filter) return;
         const div = document.createElement("div");
         div.className = "history-item";
         div.textContent = `[${entry.timestamp}] ${entry.text}`;
-        log.appendChild(div);
+        container.appendChild(div);
       });
     }
 
-    function clearHistory() {
-      history.length = 0;
-      redoStack.length = 0;
-      renderHistory();
-    }
-
     function updateSummary() {
-      const processCount = nodes.get().filter(n => n.id.startsWith("P")).length;
-      const resourceCount = nodes.get().filter(n => n.id.startsWith("R")).length;
-      document.getElementById("summary-process").textContent = processCount;
-      document.getElementById("summary-resource").textContent = resourceCount;
+      const allNodes = nodes.get();
+      document.getElementById("summary-process").textContent = allNodes.filter(n => n.id.startsWith("P")).length;
+      document.getElementById("summary-resource").textContent = allNodes.filter(n => n.id.startsWith("R")).length;
       document.getElementById("summary-edges").textContent = edges.length;
     }
 
-    function toggleDarkMode() {
-      document.body.classList.toggle("dark");
-    }
-
-    function showLoader() {
-      document.getElementById("loader").style.display = "block";
-      setTimeout(() => {
-        document.getElementById("loader").style.display = "none";
-      }, 1000);
-    }
-
     function checkDeadlock() {
-      showLoader();
       document.getElementById("status").textContent = "Checking deadlock... (simulate)";
       setTimeout(() => {
         document.getElementById("status").textContent = "✅ No deadlock detected.";
       }, 1000);
     }
 
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark");
+    }
+
+    function downloadHistory() {
+      const content = history.map(h => `[${h.timestamp}] ${h.text}`).join("\n");
+      const blob = new Blob([content], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "history.txt";
+      a.click();
+    }
+
     function exportState() {
-      const json = { nodes: nodes.get(), edges: edges.get() };
-      const blob = new Blob([JSON.stringify(json)], { type: "application/json" });
+      const data = JSON.stringify({ nodes: nodes.get(), edges: edges.get() });
+      const blob = new Blob([data], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "graph.json";
@@ -337,34 +355,18 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const json = JSON.parse(reader.result);
+        const { nodes: newNodes, edges: newEdges } = JSON.parse(reader.result);
         nodes.clear(); edges.clear();
-        nodes.add(json.nodes); edges.add(json.edges);
+        nodes.add(newNodes); edges.add(newEdges);
         updateSummary();
         logAction("Imported graph", { action: "import" });
       };
       reader.readAsText(file);
     }
-
-    function removeSelected() {
-      const selected = network.getSelectedNodes().concat(network.getSelectedEdges());
-      nodes.remove(selected); edges.remove(selected);
-      logAction("Removed selected elements", { action: "remove" });
-      updateSummary();
-    }
-
-    function undoAction() { alert("Undo not implemented."); }
-    function redoAction() { alert("Redo not implemented."); }
-    function downloadHistory() {
-      const blob = new Blob([history.map(h => `[${h.timestamp}] ${h.text}`).join("\n")], { type: "text/plain" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "history.txt";
-      a.click();
-    }
   </script>
 </body>
 </html>
+
 
 
 
