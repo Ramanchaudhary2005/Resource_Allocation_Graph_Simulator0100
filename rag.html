@@ -234,25 +234,39 @@
     const redoStack = [];
 
     function addEdge() {
-      const process = document.getElementById("process").value.trim();
-      const resource = document.getElementById("resource").value.trim();
-      const type = document.getElementById("type").value;
+  const process = document.getElementById("process").value.trim();
+  const resource = document.getElementById("resource").value.trim();
+  const type = document.getElementById("type").value;
 
-      if (!process || !resource) return alert("Enter valid process/resource");
+  if (!process || !resource) return alert("Enter valid process/resource");
 
-      const from = type === "request" ? process : resource;
-      const to = type === "request" ? resource : process;
+  const from = type === "request" ? process : resource;
+  const to = type === "request" ? resource : process;
 
-      if (!nodes.get(from)) nodes.add({ id: from, label: from });
-      if (!nodes.get(to)) nodes.add({ id: to, label: to });
+  if (!nodes.get(from)) {
+    nodes.add({
+      id: from,
+      label: from,
+      shape: from.startsWith("P") ? "circle" : "box"  // Shape by ID prefix
+    });
+  }
 
-      const id = from + "_" + to;
-      if (!edges.get(id)) {
-        edges.add({ id, from, to });
-        logAction(`Added edge ${from} → ${to}`, { action: "addEdge", edge: { id, from, to } });
-        updateSummary();
-      }
-    }
+  if (!nodes.get(to)) {
+    nodes.add({
+      id: to,
+      label: to,
+      shape: to.startsWith("P") ? "circle" : "box"
+    });
+  }
+
+  const id = from + "_" + to;
+  if (!edges.get(id)) {
+    edges.add({ id, from, to });
+    logAction(`Added edge ${from} → ${to}`, { action: "addEdge", edge: { id, from, to } });
+    updateSummary();
+  }
+}
+
 
     function logAction(text, actionData = {}) {
       const timestamp = new Date().toLocaleTimeString();
@@ -351,6 +365,9 @@
   </script>
 </body>
 </html>
+
+
+
 
 
 
