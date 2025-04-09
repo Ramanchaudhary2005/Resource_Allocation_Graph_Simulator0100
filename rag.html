@@ -91,6 +91,7 @@
       </label>
       <input type="file" id="importFile" onchange="importState(event)" style="display:none;" />
       <button class="danger" onclick="removeSelected()">🗑️ Remove Selected</button>
+      <button onclick="undoAction()">↩️ Undo</button>
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -127,6 +128,7 @@
 
     const nodeIds = new Set();
     const rawEdges = [];
+    const history = [];
 
     function addEdge() {
       const process = document.getElementById("process").value.trim();
@@ -146,9 +148,11 @@
         nodeIds.add(resource);
       }
 
-      edges.add({ from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' });
+      const newEdge = { from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' };
+      edges.add(newEdge);
       rawEdges.push([from, to]);
 
+      history.push({ action: 'addEdge', edge: newEdge });
       document.getElementById("status").innerText = `✅ ${type.charAt(0).toUpperCase() + type.slice(1)} edge added: ${from} → ${to}`;
     }
 
@@ -235,8 +239,11 @@
         document.getElementById("status").innerText = "⚠️ Select a node or edge to remove.";
         return;
       }
+
+      const removed = { nodes: [], edges: [] };
       selection.forEach(id => {
         if (nodes.get(id)) {
+          removed.nodes.push(nodes.get(id));
           nodes.remove(id);
           nodeIds.delete(id);
           for (let i = rawEdges.length - 1; i >= 0; i--) {
@@ -245,6 +252,7 @@
         } else {
           const edge = edges.get(id);
           if (edge) {
+            removed.edges.push(edge);
             edges.remove(id);
             for (let i = rawEdges.length - 1; i >= 0; i--) {
               if (rawEdges[i][0] === edge.from && rawEdges[i][1] === edge.to) {
@@ -255,10 +263,38 @@
           }
         }
       });
+
+      history.push({ action: 'remove', ...removed });
       document.getElementById("status").innerText = "🗑️ Selected items removed.";
+    }
+
+    function undoAction() {
+      const last = history.pop();
+      if (!last) {
+        document.getElementById("status").innerText = "⚠️ Nothing to undo.";
+        return;
+      }
+
+      if (last.action === 'addEdge') {
+        const index = rawEdges.findIndex(e => e[0] === last.edge.from && e[1] === last.edge.to);
+        if (index !== -1) rawEdges.splice(index, 1);
+        edges.remove({ from: last.edge.from, to: last.edge.to });
+      } else if (last.action === 'remove') {
+        last.nodes.forEach(n => {
+          nodes.add(n);
+          nodeIds.add(n.id);
+        });
+        last.edges.forEach(e => {
+          edges.add(e);
+          rawEdges.push([e.from, e.to]);
+        });
+      }
+
+      document.getElementById("status").innerText = "↩️ Undo successful.";
     }
   </script>
 </body>
 </html>
+
 
 
