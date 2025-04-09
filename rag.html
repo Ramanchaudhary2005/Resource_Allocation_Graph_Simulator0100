@@ -55,6 +55,12 @@
     button:hover {
       background-color: #0056b3;
     }
+    .danger {
+      background-color: #dc3545;
+    }
+    .danger:hover {
+      background-color: #a71d2a;
+    }
     .status {
       margin-top: 1rem;
       text-align: center;
@@ -84,6 +90,7 @@
         📁 Import Graph
       </label>
       <input type="file" id="importFile" onchange="importState(event)" style="display:none;" />
+      <button class="danger" onclick="removeSelected()">🗑️ Remove Selected</button>
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -114,7 +121,7 @@
         }
       },
       physics: true,
-      interaction: { dragNodes: true }
+      interaction: { dragNodes: true, multiselect: true }
     };
     const network = new vis.Network(container, data, options);
 
@@ -221,7 +228,37 @@
       };
       reader.readAsText(file);
     }
+
+    function removeSelected() {
+      const selection = network.getSelectedNodes().concat(network.getSelectedEdges());
+      if (selection.length === 0) {
+        document.getElementById("status").innerText = "⚠️ Select a node or edge to remove.";
+        return;
+      }
+      selection.forEach(id => {
+        if (nodes.get(id)) {
+          nodes.remove(id);
+          nodeIds.delete(id);
+          for (let i = rawEdges.length - 1; i >= 0; i--) {
+            if (rawEdges[i][0] === id || rawEdges[i][1] === id) rawEdges.splice(i, 1);
+          }
+        } else {
+          const edge = edges.get(id);
+          if (edge) {
+            edges.remove(id);
+            for (let i = rawEdges.length - 1; i >= 0; i--) {
+              if (rawEdges[i][0] === edge.from && rawEdges[i][1] === edge.to) {
+                rawEdges.splice(i, 1);
+                break;
+              }
+            }
+          }
+        }
+      });
+      document.getElementById("status").innerText = "🗑️ Selected items removed.";
+    }
   </script>
 </body>
 </html>
+
 
