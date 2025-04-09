@@ -11,13 +11,23 @@
       margin: 0;
       padding: 2rem;
       background: linear-gradient(to right, #e0f7fa, #f8f9fa);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     h1 {
       text-align: center;
       color: #333;
       margin-bottom: 1rem;
     }
+    #main-container {
+      display: flex;
+      gap: 2rem;
+      width: 100%;
+      max-width: 1400px;
+    }
     #network {
+      flex: 1;
       height: 500px;
       border: 2px solid #ccc;
       border-radius: 12px;
@@ -68,6 +78,28 @@
       font-size: 1.1rem;
       color: #333;
     }
+    .history-panel {
+      width: 280px;
+      background: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 12px;
+      padding: 1rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+      overflow-y: auto;
+      height: 500px;
+    }
+    .history-panel h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.2rem;
+      text-align: center;
+    }
+    .history-item {
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      background: #f1f1f1;
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -96,7 +128,13 @@
     <div class="status" id="status"></div>
   </div>
 
-  <div id="network"></div>
+  <div id="main-container">
+    <div id="network"></div>
+    <div class="history-panel">
+      <h2>Action History</h2>
+      <div id="history-log"></div>
+    </div>
+  </div>
 
   <script>
     const nodes = new vis.DataSet();
@@ -130,6 +168,14 @@
     const rawEdges = [];
     const history = [];
 
+    function logAction(text) {
+      const log = document.getElementById("history-log");
+      const entry = document.createElement("div");
+      entry.className = "history-item";
+      entry.innerText = text;
+      log.prepend(entry);
+    }
+
     function addEdge() {
       const process = document.getElementById("process").value.trim();
       const resource = document.getElementById("resource").value.trim();
@@ -151,9 +197,10 @@
       const newEdge = { from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' };
       edges.add(newEdge);
       rawEdges.push([from, to]);
-
       history.push({ action: 'addEdge', edge: newEdge });
+
       document.getElementById("status").innerText = `✅ ${type.charAt(0).toUpperCase() + type.slice(1)} edge added: ${from} → ${to}`;
+      logAction(`Added ${type} edge: ${from} → ${to}`);
     }
 
     function checkDeadlock() {
@@ -181,11 +228,13 @@
       for (const node of nodeIds) {
         if (dfs(node)) {
           document.getElementById("status").innerText = "🔴 Deadlock detected!";
+          logAction("⚠️ Deadlock detected!");
           return;
         }
       }
 
       document.getElementById("status").innerText = "✅ No deadlock detected.";
+      logAction("✅ No deadlock detected.");
     }
 
     function exportState() {
@@ -199,6 +248,7 @@
       a.href = url;
       a.download = 'graph-state.json';
       a.click();
+      logAction("📤 Exported graph state");
     }
 
     function importState(event) {
@@ -226,6 +276,7 @@
             edges.add({ from, to, color: from.startsWith('P') ? '#ff6b6b' : '#06d6a0' });
           });
           document.getElementById("status").innerText = "✅ Graph state imported successfully.";
+          logAction("📥 Imported graph state");
         } catch {
           alert("Failed to parse JSON file.");
         }
@@ -266,6 +317,7 @@
 
       history.push({ action: 'remove', ...removed });
       document.getElementById("status").innerText = "🗑️ Selected items removed.";
+      logAction(`🗑️ Removed ${removed.nodes.length} nodes, ${removed.edges.length} edges`);
     }
 
     function undoAction() {
@@ -279,6 +331,7 @@
         const index = rawEdges.findIndex(e => e[0] === last.edge.from && e[1] === last.edge.to);
         if (index !== -1) rawEdges.splice(index, 1);
         edges.remove({ from: last.edge.from, to: last.edge.to });
+        logAction(`↩️ Undid addEdge: ${last.edge.from} → ${last.edge.to}`);
       } else if (last.action === 'remove') {
         last.nodes.forEach(n => {
           nodes.add(n);
@@ -288,6 +341,7 @@
           edges.add(e);
           rawEdges.push([e.from, e.to]);
         });
+        logAction(`↩️ Undid removal of ${last.nodes.length} nodes and ${last.edges.length} edges`);
       }
 
       document.getElementById("status").innerText = "↩️ Undo successful.";
@@ -295,6 +349,7 @@
   </script>
 </body>
 </html>
+
 
 
 
