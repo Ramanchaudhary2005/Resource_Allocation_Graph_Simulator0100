@@ -87,11 +87,19 @@
       box-shadow: 0 4px 10px rgba(0,0,0,0.05);
       overflow-y: auto;
       height: 500px;
+      display: flex;
+      flex-direction: column;
     }
     .history-panel h2 {
-      margin: 0 0 1rem 0;
+      margin: 0 0 0.5rem 0;
       font-size: 1.2rem;
       text-align: center;
+    }
+    .history-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
     }
     .history-item {
       padding: 0.5rem;
@@ -99,6 +107,10 @@
       background: #f1f1f1;
       border-radius: 6px;
       font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .history-item:hover {
+      background-color: #e3e3e3;
     }
   </style>
 </head>
@@ -132,6 +144,16 @@
     <div id="network"></div>
     <div class="history-panel">
       <h2>Action History</h2>
+      <div class="history-actions">
+        <select id="filter-action" onchange="renderHistory()">
+          <option value="all">All</option>
+          <option value="addEdge">Add Edge</option>
+          <option value="remove">Remove</option>
+          <option value="import">Import</option>
+          <option value="export">Export</option>
+        </select>
+        <button onclick="clearHistory()" class="danger">Clear</button>
+      </div>
       <div id="history-log"></div>
     </div>
   </div>
@@ -168,187 +190,37 @@
     const rawEdges = [];
     const history = [];
 
-    function logAction(text) {
+    function renderHistory() {
       const log = document.getElementById("history-log");
-      const entry = document.createElement("div");
-      entry.className = "history-item";
-      entry.innerText = text;
-      log.prepend(entry);
-    }
-
-    function addEdge() {
-      const process = document.getElementById("process").value.trim();
-      const resource = document.getElementById("resource").value.trim();
-      const type = document.getElementById("type").value;
-      if (!process || !resource) return alert("Both fields are required.");
-
-      const from = type === "request" ? process : resource;
-      const to = type === "request" ? resource : process;
-
-      if (!nodeIds.has(process)) {
-        nodes.add({ id: process, label: process, color: '#a2d2ff' });
-        nodeIds.add(process);
-      }
-      if (!nodeIds.has(resource)) {
-        nodes.add({ id: resource, label: resource, color: '#ffd6a5' });
-        nodeIds.add(resource);
-      }
-
-      const newEdge = { from, to, color: type === 'request' ? '#ff6b6b' : '#06d6a0' };
-      edges.add(newEdge);
-      rawEdges.push([from, to]);
-      history.push({ action: 'addEdge', edge: newEdge });
-
-      document.getElementById("status").innerText = `✅ ${type.charAt(0).toUpperCase() + type.slice(1)} edge added: ${from} → ${to}`;
-      logAction(`Added ${type} edge: ${from} → ${to}`);
-    }
-
-    function checkDeadlock() {
-      const adj = {};
-      nodeIds.forEach(n => adj[n] = []);
-      rawEdges.forEach(([from, to]) => adj[from].push(to));
-
-      const visited = new Set();
-      const recStack = new Set();
-
-      function dfs(node) {
-        if (!visited.has(node)) {
-          visited.add(node);
-          recStack.add(node);
-
-          for (const neighbor of adj[node]) {
-            if (!visited.has(neighbor) && dfs(neighbor)) return true;
-            else if (recStack.has(neighbor)) return true;
-          }
-        }
-        recStack.delete(node);
-        return false;
-      }
-
-      for (const node of nodeIds) {
-        if (dfs(node)) {
-          document.getElementById("status").innerText = "🔴 Deadlock detected!";
-          logAction("⚠️ Deadlock detected!");
-          return;
-        }
-      }
-
-      document.getElementById("status").innerText = "✅ No deadlock detected.";
-      logAction("✅ No deadlock detected.");
-    }
-
-    function exportState() {
-      const state = {
-        nodes: nodes.get(),
-        edges: rawEdges
-      };
-      const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'graph-state.json';
-      a.click();
-      logAction("📤 Exported graph state");
-    }
-
-    function importState(event) {
-      const file = event.target.files[0];
-      if (!file || !file.name.endsWith('.json')) {
-        alert("Please upload a valid JSON file.");
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const content = JSON.parse(e.target.result);
-          nodes.clear();
-          edges.clear();
-          rawEdges.length = 0;
-          nodeIds.clear();
-
-          content.nodes.forEach(n => {
-            nodes.add(n);
-            nodeIds.add(n.id);
-          });
-          content.edges.forEach(([from, to]) => {
-            rawEdges.push([from, to]);
-            edges.add({ from, to, color: from.startsWith('P') ? '#ff6b6b' : '#06d6a0' });
-          });
-          document.getElementById("status").innerText = "✅ Graph state imported successfully.";
-          logAction("📥 Imported graph state");
-        } catch {
-          alert("Failed to parse JSON file.");
-        }
-      };
-      reader.readAsText(file);
-    }
-
-    function removeSelected() {
-      const selection = network.getSelectedNodes().concat(network.getSelectedEdges());
-      if (selection.length === 0) {
-        document.getElementById("status").innerText = "⚠️ Select a node or edge to remove.";
-        return;
-      }
-
-      const removed = { nodes: [], edges: [] };
-      selection.forEach(id => {
-        if (nodes.get(id)) {
-          removed.nodes.push(nodes.get(id));
-          nodes.remove(id);
-          nodeIds.delete(id);
-          for (let i = rawEdges.length - 1; i >= 0; i--) {
-            if (rawEdges[i][0] === id || rawEdges[i][1] === id) rawEdges.splice(i, 1);
-          }
-        } else {
-          const edge = edges.get(id);
-          if (edge) {
-            removed.edges.push(edge);
-            edges.remove(id);
-            for (let i = rawEdges.length - 1; i >= 0; i--) {
-              if (rawEdges[i][0] === edge.from && rawEdges[i][1] === edge.to) {
-                rawEdges.splice(i, 1);
-                break;
-              }
-            }
-          }
-        }
+      log.innerHTML = "";
+      const filter = document.getElementById("filter-action").value;
+      [...history].reverse().forEach((entry, index) => {
+        if (filter !== 'all' && entry.action !== filter) return;
+        const div = document.createElement("div");
+        div.className = "history-item";
+        div.textContent = entry.text;
+        div.onclick = () => {
+          if (entry.nodes) network.selectNodes(entry.nodes.map(n => n.id));
+          if (entry.edge) network.selectEdges([entry.edge.id]);
+          if (entry.edges) network.selectEdges(entry.edges.map(e => e.id));
+        };
+        log.appendChild(div);
       });
-
-      history.push({ action: 'remove', ...removed });
-      document.getElementById("status").innerText = "🗑️ Selected items removed.";
-      logAction(`🗑️ Removed ${removed.nodes.length} nodes, ${removed.edges.length} edges`);
     }
 
-    function undoAction() {
-      const last = history.pop();
-      if (!last) {
-        document.getElementById("status").innerText = "⚠️ Nothing to undo.";
-        return;
-      }
+    function logAction(text, actionData = {}) {
+      history.push({ ...actionData, text });
+      renderHistory();
+    }
 
-      if (last.action === 'addEdge') {
-        const index = rawEdges.findIndex(e => e[0] === last.edge.from && e[1] === last.edge.to);
-        if (index !== -1) rawEdges.splice(index, 1);
-        edges.remove({ from: last.edge.from, to: last.edge.to });
-        logAction(`↩️ Undid addEdge: ${last.edge.from} → ${last.edge.to}`);
-      } else if (last.action === 'remove') {
-        last.nodes.forEach(n => {
-          nodes.add(n);
-          nodeIds.add(n.id);
-        });
-        last.edges.forEach(e => {
-          edges.add(e);
-          rawEdges.push([e.from, e.to]);
-        });
-        logAction(`↩️ Undid removal of ${last.nodes.length} nodes and ${last.edges.length} edges`);
-      }
-
-      document.getElementById("status").innerText = "↩️ Undo successful.";
+    function clearHistory() {
+      history.length = 0;
+      renderHistory();
     }
   </script>
 </body>
 </html>
+
 
 
 
