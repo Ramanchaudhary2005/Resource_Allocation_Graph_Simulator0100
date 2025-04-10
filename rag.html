@@ -180,6 +180,7 @@
     .toggle-dark:hover {
       background: #222;
     }
+    
   </style>
 </head>
 <body>
@@ -355,22 +356,30 @@
 
   function showNextMessage() {
     if (index < loadingMessages.length) {
+      status.classList.remove("fade-in");
+      void status.offsetWidth;
       status.textContent = loadingMessages[index];
+      status.classList.add("fade-in");
       index++;
-      setTimeout(showNextMessage, 800);
+      setTimeout(showNextMessage, 1000);
     } else {
       loader.style.display = "none";
-      // You can replace this logic with actual deadlock detection
-      const deadlockDetected = false;
-      status.textContent = deadlockDetected
+
+      const hasCycle = detectCycle();
+
+      status.classList.remove("fade-in");
+      void status.offsetWidth;
+      status.textContent = hasCycle
         ? "❌ Deadlock detected in the system!"
         : "✅ No deadlock detected.";
-      status.style.color = deadlockDetected ? "red" : "green";
+      status.style.color = hasCycle ? "red" : "green";
+      status.classList.add("fade-in");
     }
   }
 
   showNextMessage();
 }
+
 
 
     function toggleDarkMode() {
@@ -409,9 +418,47 @@
       };
       reader.readAsText(file);
     }
+
+    
+    function detectCycle() {
+  const adj = {};
+  const allNodes = nodes.get();
+  const allEdges = edges.get();
+
+  allNodes.forEach(n => adj[n.id] = []);
+  allEdges.forEach(e => {
+    adj[e.from].push(e.to);
+  });
+
+  const visited = {};
+  const recStack = {};
+
+  function dfs(node) {
+    visited[node] = true;
+    recStack[node] = true;
+
+    for (let neighbor of adj[node]) {
+      if (!visited[neighbor] && dfs(neighbor)) return true;
+      else if (recStack[neighbor]) return true;
+    }
+
+    recStack[node] = false;
+    return false;
+  }
+
+  for (let node in adj) {
+    if (!visited[node]) {
+      if (dfs(node)) return true;
+    }
+  }
+  return false;
+}
+
+    
   </script>
 </body>
 </html>
+
 
 
 
