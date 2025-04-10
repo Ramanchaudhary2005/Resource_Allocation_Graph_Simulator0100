@@ -432,32 +432,74 @@
 
   const visited = {};
   const recStack = {};
+  const path = [];
 
   function dfs(node) {
     visited[node] = true;
     recStack[node] = true;
+    path.push(node);
 
     for (let neighbor of adj[node]) {
-      if (!visited[neighbor] && dfs(neighbor)) return true;
-      else if (recStack[neighbor]) return true;
+      if (!visited[neighbor]) {
+        if (dfs(neighbor)) return true;
+      } else if (recStack[neighbor]) {
+        path.push(neighbor); // Add start of cycle to mark
+        return true;
+      }
     }
 
     recStack[node] = false;
+    path.pop();
     return false;
   }
 
   for (let node in adj) {
     if (!visited[node]) {
-      if (dfs(node)) return true;
+      path.length = 0;
+      if (dfs(node)) {
+        // Extract only nodes involved in the cycle
+        const startNode = path[path.length - 1];
+        const cycleStartIndex = path.indexOf(startNode);
+        const cyclePath = path.slice(cycleStartIndex);
+        highlightCycleNodes(cyclePath);
+        return true;
+      }
     }
   }
+
+  clearNodeHighlights(); // In case no cycle is found
   return false;
 }
+    function highlightCycleNodes(cycleNodes) {
+  const updateArray = cycleNodes.map(id => ({
+    id,
+    color: {
+      background: "#ff4d4d", // red background
+      border: "#b30000"
+    }
+  }));
+  nodes.update(updateArray);
+}
+
+function clearNodeHighlights() {
+  const allNodes = nodes.get();
+  const resetArray = allNodes.map(n => ({
+    id: n.id,
+    color: {
+      background: undefined,
+      border: undefined
+    }
+  }));
+  nodes.update(resetArray);
+}
+
+
 
     
   </script>
 </body>
 </html>
+
 
 
 
