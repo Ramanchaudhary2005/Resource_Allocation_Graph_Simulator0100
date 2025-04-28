@@ -252,54 +252,89 @@
         const history = [];
         const redoStack = [];
         const resources = {};
+        let edgeCounter = 0; // Counter for unique edge IDs
 
-        function addEdge() {
-        const process = document.getElementById("process").value.trim();
-        const resourceBase = document.getElementById("resourceBase").value.trim();
-        const instanceCount = parseInt(document.getElementById("instanceCount").value);
-        const type = document.getElementById("type").value;
-
-        if (!process || !resourceBase || isNaN(instanceCount) || instanceCount < 1) {
-            alert("Enter valid process, resource, and instance count.");
-            return;
-        }
-
-        const isRequest = type === "request";
-        const processId = process;
-
-        if (!nodes.get(processId)) {
-            nodes.add({ id: processId, label: processId, shape: "circle" });
-        }
-
-        if (!resources[resourceBase]) {
-            resources[resourceBase] = { total: instanceCount, available: instanceCount };
-            nodes.add({ id: resourceBase, label: `${resourceBase} (${instanceCount})`, shape: "box" });
-        }
-
-        if (isRequest) {
-            // For request edges (P → R), we don't check or decrement available resources
-            // A process can request a resource even if none are available (it will just wait)
-            edges.add({ id: processId + "_" + resourceBase, from: processId, to: resourceBase });
-            logAction(`Process ${processId} requests ${resourceBase}`, {
-                action: "addEdge",
-                edge: { id: processId + "_" + resourceBase, from: processId, to: resourceBase },
-            });
-            updateSummary();
-        } else {
-            // For allocation edges (R → P), we check if resources are available
-            if (resources[resourceBase].available > 0) {
-                edges.add({ id: resourceBase + "_" + processId, from: resourceBase, to: processId });
-                logAction(`Resource ${resourceBase} allocated to ${processId}`, {
-                    action: "addEdge",
-                    edge: { id: resourceBase + "_" + processId, from: resourceBase, to: processId },
-                });
-                resources[resourceBase].available--;
-                updateSummary();
-            } else {
-                alert(`Cannot allocate ${resourceBase} to ${processId}, no free instances.`);
+        function clearHistory() {
+            if (confirm("Are you sure you want to clear the action history?")) {
+                history.length = 0;
+                redoStack.length = 0;
+                renderHistory();
             }
         }
-    }
+
+        function addEdge() {
+            const process = document.getElementById("process").value.trim();
+            const resourceBase = document.getElementById("resourceBase").value.trim();
+            const instanceCount = parseInt(document.getElementById("instanceCount").value);
+            const type = document.getElementById("type").value;
+
+            if (!process || !resourceBase || isNaN(instanceCount) || instanceCount < 1) {
+                alert("Enter valid process, resource, and instance count.");
+                return;
+            }
+
+            const isRequest = type === "request";
+            const processId = process;
+
+            if (!nodes.get(processId)) {
+                nodes.add({ id: processId, label: processId, shape: "circle" });
+            }
+
+            if (!resources[resourceBase]) {
+                resources[resourceBase] = { total: instanceCount, available: instanceCount };
+                nodes.add({ id: resourceBase, label: `${resourceBase} (${instanceCount})`, shape: "box" });
+            }
+
+            // Generate a unique edge ID using a counter
+            const uniqueEdgeId = `edge_${Date.now()}_${edgeCounter++}`;
+
+            if (isRequest) {
+                // For request edges (P → R), we don't check or decrement available resources
+                edges.add({ 
+                    id: uniqueEdgeId,
+                    from: processId, 
+                    to: resourceBase,
+                    title: "Request",
+                    edgeType: "request" // Add a custom property to identify edge type
+                });
+                logAction(`Process ${processId} requests ${resourceBase}`, {
+                    action: "addEdge",
+                    edge: { 
+                        id: uniqueEdgeId, 
+                        from: processId, 
+                        to: resourceBase, 
+                        edgeType: "request"
+                    },
+                    isRequest: true
+                });
+                updateSummary();
+            } else {
+                // For allocation edges (R → P), we check if resources are available
+                if (resources[resourceBase].available > 0) {
+                    edges.add({ 
+                        id: uniqueEdgeId, 
+                        from: resourceBase, 
+                        to: processId,
+                        title: "Allocation",
+                        edgeType: "allocate" // Add a custom property to identify edge type
+                    });
+                    logAction(`Resource ${resourceBase} allocated to ${processId}`, {
+                        action: "addEdge",
+                        edge: { 
+                            id: uniqueEdgeId, 
+                            from: resourceBase, 
+                            to: processId, 
+                            edgeType: "allocate"
+                        },
+                        isRequest: false
+                    });
+                    resources[resourceBase].available--;
+                    updateSummary();
+                } else {
+                    alert(`Cannot allocate ${resourceBase} to ${processId}, no free instances.`);
+                }
+            }
+        }
 
         function logAction(text, data = {}) {
             const entry = { ...data, text, timestamp: new Date().toLocaleTimeString() };
@@ -312,17 +347,32 @@
             const last = history.pop();
             if (!last) return;
             redoStack.push(last);
+            
             if (last.action === "addEdge") {
                 edges.remove(last.edge.id);
-                const edge = last.edge;
-                const resourceName = edge.to.startsWith("R") ? edge.to : edge.from;
-                if (resources[resourceName]) {
-                    resources[resourceName].available++;
+                
+                // Only update resource count for allocation edges (not for request edges)
+                if (!last.isRequest) {
+                    const resourceName = last.edge.from; // For allocation, resource is 'from'
+                    if (resources[resourceName]) {
+                        resources[resourceName].available++;
+                    }
                 }
             } else if (last.action === "remove") {
                 nodes.add(last.nodes);
                 edges.add(last.edges);
+                
+                // Update resource counts for any allocation edges that were restored
+                last.edges.forEach(edge => {
+                    if (edge.edgeType === "allocate" || (edge.from.startsWith("R") && edge.to.startsWith("P"))) {
+                        const resourceName = edge.from;
+                        if (resources[resourceName]) {
+                            resources[resourceName].available--;
+                        }
+                    }
+                });
             }
+            
             renderHistory();
             updateSummary();
         }
@@ -331,17 +381,32 @@
             const last = redoStack.pop();
             if (!last) return;
             history.push(last);
+            
             if (last.action === "addEdge") {
                 edges.add(last.edge);
-                const edge = last.edge;
-                const resourceName = edge.to.startsWith("R") ? edge.to : edge.from;
-                if (resources[resourceName]) {
-                    resources[resourceName].available--;
+                
+                // Only update resource count for allocation edges (not for request edges)
+                if (!last.isRequest) {
+                    const resourceName = last.edge.from; // For allocation, resource is 'from'
+                    if (resources[resourceName]) {
+                        resources[resourceName].available--;
+                    }
                 }
             } else if (last.action === "remove") {
                 nodes.remove(last.nodes.map(n => n.id));
                 edges.remove(last.edges.map(e => e.id));
+                
+                // Update resource counts for any allocation edges that were removed
+                last.edges.forEach(edge => {
+                    if (edge.edgeType === "allocate" || (edge.from.startsWith("R") && edge.to.startsWith("P"))) {
+                        const resourceName = edge.from;
+                        if (resources[resourceName]) {
+                            resources[resourceName].available++;
+                        }
+                    }
+                });
             }
+            
             renderHistory();
             updateSummary();
         }
@@ -349,6 +414,17 @@
         function removeSelected() {
             const selectedNodes = network.getSelectedNodes().map(id => nodes.get(id));
             const selectedEdges = network.getSelectedEdges().map(id => edges.get(id));
+            
+            // Update available resource count for allocation edges
+            selectedEdges.forEach(edge => {
+                if (edge.edgeType === "allocate" || (edge.from.startsWith("R") && edge.to.startsWith("P"))) {
+                    const resourceName = edge.from;
+                    if (resources[resourceName]) {
+                        resources[resourceName].available++;
+                    }
+                }
+            });
+            
             nodes.remove(selectedNodes.map(n => n.id));
             edges.remove(selectedEdges.map(e => e.id));
             logAction("Removed selected elements", { action: "remove", nodes: selectedNodes, edges: selectedEdges });
@@ -400,62 +476,18 @@
                     setTimeout(showNextMessage, 1000);
                 } else {
                     loader.style.display = "none";
-                    let hasDeadlock = detectDeadlock(); // Call detectDeadlock and store the result
+                    let result = detectDeadlock();
                     status.classList.remove("fade-in");
                     void status.offsetWidth;
-                    status.textContent = hasDeadlock
-                        ? "❌ Deadlock detected in the system!"
-                        : "✅ No deadlock detected.";
-                    status.style.color = hasDeadlock ? "red" : "green";
+                    status.textContent = result.hasDeadlock
+                        ? `❌ Deadlock detected! Deadlocked processes: ${result.deadlockedProcesses.join(', ')}`
+                        : `✅ No deadlock detected. Safe sequence: ${result.safeSequence.join(' → ')}`;
+                    status.style.color = result.hasDeadlock ? "red" : "green";
                     status.classList.add("fade-in");
                 }
             }
 
             showNextMessage();
-        }
-
-        function toggleDarkMode() {
-            document.body.classList.toggle("dark");
-        }
-
-        function downloadHistory() {
-            const content = history.map(h => `[${h.timestamp}] ${h.text}`).join("\n");
-            const blob = new Blob([content], { type: "text/plain" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "history.txt";
-            a.click();
-        }
-
-        function exportState() {
-            const data = JSON.stringify({ nodes: nodes.get(), edges: edges.get() });
-            const blob = new Blob([data], { type: "application/json" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "graph.json";
-            a.click();
-            logAction("Exported graph", { action: "export" });
-        }
-
-        function importState(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                try {
-                    const { nodes: newNodes, edges: newEdges } = JSON.parse(reader.result);
-                    nodes.clear();
-                    edges.clear();
-                    nodes.add(newNodes);
-                    edges.add(newEdges);
-                    updateSummary();
-                    logAction("Imported graph", { action: "import" });
-                } catch (e) {
-                    alert("Invalid file format. Please import a valid JSON graph file.");
-                    console.error("Error importing graph:", e);
-                }
-            };
-            reader.readAsText(file);
         }
 
         function detectDeadlock() {
@@ -481,7 +513,7 @@
             });
         });
         
-        // Count allocated resources
+        // Count allocated resources and requested resources
         allEdges.forEach(edge => {
             if (edge.from.startsWith("R") && edge.to.startsWith("P")) {
                 // Resource allocated to process
@@ -551,55 +583,139 @@
         if (deadlockedProcesses.length > 0) {
             // Highlight deadlocked processes
             highlightCycleNodes(deadlockedProcesses.map(p => p.id));
-            document.getElementById("status").textContent = 
-                `❌ Deadlock detected! Deadlocked processes: ${deadlockedProcesses.map(p => p.id).join(', ')}`;
-            document.getElementById("status").style.color = "red";
-            return true;
-        } else {
-            document.getElementById("status").textContent = 
-                `✅ No deadlock detected. Safe sequence: ${safeSequence.join(' → ')}`;
-            document.getElementById("status").style.color = "green";
-            return false;
         }
+        
+        return {
+            hasDeadlock: deadlockedProcesses.length > 0,
+            deadlockedProcesses: deadlockedProcesses.map(p => p.id),
+            safeSequence: safeSequence
+        };
     }
 
+    function toggleDarkMode() {
+    document.body.classList.toggle("dark");
+}
 
-        function isResourceProcessCycle(cyclePath) {
-            let hasProcess = false;
-            let hasResource = false;
-            for (let nodeId of cyclePath) {
-                if (nodeId.startsWith("P")) {
-                    hasProcess = true;
-                } else if (nodeId.startsWith("R")) {
-                    hasResource = true;
-                }
+function downloadHistory() {
+    const content = history.map(h => `[${h.timestamp}] ${h.text}`).join("\n");
+    const blob = new Blob([content], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "history.txt";
+    a.click();
+}
+
+function exportState() {
+    const data = JSON.stringify({ 
+        nodes: nodes.get(), 
+        edges: edges.get(),
+        resources: resources,
+        edgeCounter: edgeCounter
+    });
+    const blob = new Blob([data], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "graph.json";
+    a.click();
+    logAction("Exported graph", { action: "export" });
+}
+
+function importState(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const data = JSON.parse(reader.result);
+            
+            // Clear current data
+            nodes.clear();
+            edges.clear();
+            Object.keys(resources).forEach(key => delete resources[key]);
+            
+            // Import nodes and edges
+            nodes.add(data.nodes);
+            edges.add(data.edges);
+            
+            // Import resources
+            if (data.resources) {
+                Object.assign(resources, data.resources);
+            } else {
+                // Rebuild resources if not in the import file
+                data.nodes.forEach(node => {
+                    if (node.id.startsWith("R")) {
+                        const match = node.label.match(/$$(\d+)$$/);
+                        const total = match ? parseInt(match[1]) : 1;
+                        
+                        // Calculate available instances
+                        let allocated = 0;
+                        data.edges.forEach(edge => {
+                            if (edge.from === node.id && edge.to.startsWith("P")) {
+                                allocated++;
+                            }
+                        });
+                        
+                        resources[node.id] = { 
+                            total: total, 
+                            available: total - allocated 
+                        };
+                    }
+                });
             }
-            return hasProcess && hasResource;
+            
+            // Set edge counter to continue from imported state
+            if (data.edgeCounter) {
+                edgeCounter = data.edgeCounter;
+            }
+            
+            updateSummary();
+            logAction("Imported graph", { action: "import" });
+        } catch (e) {
+            alert("Invalid file format. Please import a valid JSON graph file.");
+            console.error("Error importing graph:", e);
         }
+    };
+    reader.readAsText(file);
+}
 
-        function highlightCycleNodes(cycleNodes) {
-            const updateArray = cycleNodes.map(id => ({
-                id,
-                color: {
-                    background: "#ff4d4d",
-                    border: "#b30000"
-                }
-            }));
-            nodes.update(updateArray);
+function isResourceProcessCycle(cyclePath) {
+    let hasProcess = false;
+    let hasResource = false;
+    for (let nodeId of cyclePath) {
+        if (nodeId.startsWith("P")) {
+            hasProcess = true;
+        } else if (nodeId.startsWith("R")) {
+            hasResource = true;
         }
+    }
+    return hasProcess && hasResource;
+}
 
-        function clearNodeHighlights() {
-            const allNodes = nodes.get();
-            const resetArray = allNodes.map(n => ({
-                id: n.id,
-                color: {
-                    background: undefined,
-                    border: undefined
-                }
-            }));
-            nodes.update(resetArray);
+function highlightCycleNodes(cycleNodes) {
+    const updateArray = cycleNodes.map(id => ({
+        id,
+        color: {
+            background: "#ff4d4d",
+            border: "#b30000"
         }
+    }));
+    nodes.update(updateArray);
+}
+
+function clearNodeHighlights() {
+    const allNodes = nodes.get();
+    const resetArray = allNodes.map(n => ({
+        id: n.id,
+        color: {
+            background: undefined,
+            border: undefined
+        }
+    }));
+    nodes.update(resetArray);
+}
+
     </script>
+    
 </body>
 </html>
 
